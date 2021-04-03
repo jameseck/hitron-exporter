@@ -8,6 +8,18 @@ Metrics exporter for Hitron CGNV4-FX2 routers, which are (used to be?) distribut
 ```bash
 docker run -it --rm -p 9101:80 cfstras/hitron-exporter --host --pass XYZ
 ```
+
+### docker-compose
+
+```yaml
+hitron_exporter:
+  image: hitron-exporter
+  command:
+   - --pass=mySecretPassword
+#   - --user=admin
+#   - --host=http://192.168.0.1:80/
+  restart: unless-stopped
+```
 ## License
 
 See [LICENSE.md](LICENSE.md)  
