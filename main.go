@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/log"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
@@ -16,7 +16,7 @@ import (
 func main() {
 	flags := pflag.NewFlagSet("server", pflag.ExitOnError)
 
-	flags.String("host", "192.168.0.1:80", "Host and port to connect to router")
+	flags.String("host", "http://192.168.0.1:80", "Host and port to connect to router")
 	flags.StringP("user", "u", "admin", "Login username")
 	flags.StringP("pass", "p", "admin", "Login password")
 	flags.BoolP("debug", "d", false, "Enable debug mode")
@@ -26,10 +26,9 @@ func main() {
 	os.Args = os.Args[0:1] // clear arguments for coredns
 	viper.BindPFlags(flags)
 
-	if err := viper.ReadInConfig(); err != nil {
-		log.Fatalln("Could not read config:", err)
+	if viper.GetBool("debug") {
+		log.SetLevel(log.DebugLevel)
 	}
-
 	startServer()
 }
 
@@ -57,7 +56,7 @@ func handleMetricsRequest(w http.ResponseWriter, request *http.Request) {
 		Router: collector.NewHitronRouter(viper.GetString("host"), viper.GetString("user"), viper.GetString("pass")),
 	})
 	promhttp.HandlerFor(registry, promhttp.HandlerOpts{
-		ErrorLog:      log.NewErrorLogger(),
+		ErrorLog:      log.New(),
 		ErrorHandling: promhttp.ContinueOnError,
 	}).ServeHTTP(w, request)
 }
