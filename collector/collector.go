@@ -18,15 +18,23 @@ var (
 	loginSuccessDesc *prometheus.Desc = prometheus.NewDesc(
 		prefix+"login_success_bool", "1 if the login was successful", nil, nil)
 
-	// info
+	// SysInfo
 	systemUpdateDesc = prometheus.NewDesc(
 		prefix+"info_uptime", "System uptime", nil, nil)
+
+	// CMInit
+	cmHwInitDesc = prometheus.NewDesc(
+		prefix+"cm_hwinit_success", "DOCSIS Provisioning HWInit Status", nil, nil)
 )
 
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- loginSuccessDesc
 
+	// SysInfo
 	ch <- systemUpdateDesc
+
+	// CMInit
+	ch <- cmHwInitDesc
 }
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	err := c.Router.Login()
@@ -43,6 +51,21 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 	ch <- prometheus.MustNewConstMetric(systemUpdateDesc, prometheus.CounterValue, parseUptime(info.SystemUptime))
+
+	cmInit, err := c.Router.CMInit()
+	if err != nil {
+		log.Info("CMInit: ", err)
+		return
+	}
+	ch <- prometheus.MustNewConstMetric(cmHwInitDesc, prometheus.GaugeValue,
+		is(StatusSuccess, cmInit.HwInit))
+}
+
+func is(expected, actual string) float64 {
+	if expected == actual {
+		return 1
+	}
+	return 0
 }
 
 var uptimeRegex = regexp.MustCompile(`^(\d+) Days,(\d+) Hours,(\d+) Minutes,(\d+) Seconds$`)

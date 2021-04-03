@@ -23,25 +23,44 @@ type HitronRouter struct {
 	parsedUrl *url.URL
 }
 
-type Info struct {
-	HwVersion       string `json:"hwVersion"`       // 1A",
-	SwVersion       string `json:"swVersion"`       // 4.12.34.567-XX-YYY",
-	SerialNumber    string `json:"serialNumber"`    // VCAP12345678",
-	RfMac           string `json:"rfMac"`           // 68:8F:12:34:12:34",
-	WanIp           string `json:"wanIp"`           // 84.12.34.56/21",
-	AftrName        string `json:"aftrName"`        // ",
-	AftrAddr        string `json:"aftrAddr"`        // ",
-	DelegatedPrefix string `json:"delegatedPrefix"` // ",
-	LanIPv6Addr     string `json:"lanIPv6Addr"`     // ",
-	SystemUptime    string `json:"systemUptime"`    // 04 Days,22 Hours,23 Minutes,48 Seconds",
-	SystemTime      string `json:"systemTime"`      // Sat Apr 03, 2021, 14:16:41",
-	Timezone        string `json:"timezone"`        // 1",
-	WRecPkt         string `json:"WRecPkt"`         // 815.00M Bytes",
-	WSendPkt        string `json:"WSendPkt"`        // 527.44M Bytes",
-	LanIp           string `json:"lanIp"`           // 192.168.0.1/24",
-	LRecPkt         string `json:"LRecPkt"`         // 779.79M Bytes",
-	LSendPkt        string `json:"LSendPkt"`        // 1.15G Bytes"
+type SysInfo struct {
+	HwVersion       string `json:"hwVersion"`       // 1A
+	SwVersion       string `json:"swVersion"`       // 4.12.34.567-XX-YYY
+	SerialNumber    string `json:"serialNumber"`    // VCAP12345678
+	RfMac           string `json:"rfMac"`           // 68:8F:12:34:12:34
+	WanIp           string `json:"wanIp"`           // 84.12.34.56/21
+	AftrName        string `json:"aftrName"`        //
+	AftrAddr        string `json:"aftrAddr"`        //
+	DelegatedPrefix string `json:"delegatedPrefix"` //
+	LanIPv6Addr     string `json:"lanIPv6Addr"`     //
+	SystemUptime    string `json:"systemUptime"`    // 04 Days,22 Hours,23 Minutes,48 Seconds
+	SystemTime      string `json:"systemTime"`      // Sat Apr 03, 2021, 14:16:41
+	Timezone        string `json:"timezone"`        // 1
+	WRecPkt         string `json:"WRecPkt"`         // 815.00M Bytes
+	WSendPkt        string `json:"WSendPkt"`        // 527.44M Bytes
+	LanIp           string `json:"lanIp"`           // 192.168.0.1/24
+	LRecPkt         string `json:"LRecPkt"`         // 779.79M Bytes
+	LSendPkt        string `json:"LSendPkt"`        // 1.15G Bytes
 }
+
+type CMInit struct {
+	HwInit         string `json:"hwInit"`         // Success
+	FindDownstream string `json:"findDownstream"` // Success
+	Ranging        string `json:"ranging"`        // Success
+	Dhcp           string `json:"dhcp"`           // Success
+	TimeOfday      string `json:"timeOfday"`      // Secret
+	DownloadCfg    string `json:"downloadCfg"`    // Success
+	Registration   string `json:"registration"`   // Success
+	EaeStatus      string `json:"eaeStatus"`      // Secret
+	BpiStatus      string `json:"bpiStatus"`      // AUTH:authorized, TEK:operational
+	NetworkAccess  string `json:"networkAccess"`  // Permitted
+	TrafficStatus  string `json:"trafficStatus"`  // Enabl
+}
+
+var (
+	StatusSuccess          string = "Success"
+	NetworkAccessPermitted        = "Permitted"
+)
 
 func NewHitronRouter(rawUrl, username, password string) *HitronRouter {
 	cookieJar, err := cookiejar.New(nil)
@@ -106,24 +125,44 @@ func (r *HitronRouter) getCookie(name string) string {
 	return ""
 }
 
-func (r *HitronRouter) Info() (*Info, error) {
-	resp, err := r.client.Get(r.URL + "/data/getSysInfo.asp")
+func (r *HitronRouter) fetch(name string, output interface{}) error {
+	resp, err := r.client.Get(r.URL + "/data/get" + name + ".asp")
 	if err != nil {
-		return nil, errors.Wrap(err, "getting info")
+		return errors.Wrap(err, "getting "+name)
 	}
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		return err
+	}
+	log.Debugf("%s raw: %+v : %v", name, resp, string(data))
+	err = json.Unmarshal(data, output)
+	if err != nil {
+		return errors.Wrap(err, "parsing "+name)
+	}
+	log.Debugf("%s: %+v", name, output)
+	return nil
+}
+
+func (r *HitronRouter) Info() (*SysInfo, error) {
+	var data []SysInfo
+	err := r.fetch("SysInfo", &data)
+	if err != nil {
 		return nil, err
 	}
-	log.Debugf("Info raw: %+v : %v", resp, string(data))
-	var info []Info
-	err = json.Unmarshal(data, &info)
+	if len(data) != 1 {
+		return nil, errors.New(fmt.Sprintf("SysInfo gave wrong length: %d", len(data)))
+	}
+	return &data[0], err
+}
+
+func (r *HitronRouter) CMInit() (*CMInit, error) {
+	var data []CMInit
+	err := r.fetch("CMInit", &data)
 	if err != nil {
-		return nil, errors.Wrap(err, "parsing info")
+		return nil, err
 	}
-	log.Debugf("Info: %+v", info)
-	if len(info) != 1 {
-		return nil, errors.New(fmt.Sprintf("Info gave wrong length: %d", len(info)))
+	if len(data) != 1 {
+		return nil, errors.New(fmt.Sprintf("CMInit gave wrong length: %d", len(data)))
 	}
-	return &info[0], nil
+	return &data[0], err
 }
