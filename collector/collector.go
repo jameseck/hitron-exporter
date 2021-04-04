@@ -112,12 +112,14 @@ func (c *Collector) Collect(ch chan<- prom.Metric) {
 	var wg sync.WaitGroup
 	wg.Add(6)
 
-	go c.CollectInfo(&wg, session, ch)
-	go c.CollectCMInit(&wg, session, ch)
-	go c.CollectCMDocisWAN(&wg, session, ch)
-	go c.CollectConnectInfo(&wg, session, ch)
-	go c.CollectDonwstreamInfo(&wg, session, ch)
-	go c.CollectUpstreamInfo(&wg, session, ch)
+	// these could be run in parallel, but the webserver seems to be serial
+	// so that only screws up our section timing metrics
+	c.CollectInfo(&wg, session, ch)
+	c.CollectCMInit(&wg, session, ch)
+	c.CollectCMDocisWAN(&wg, session, ch)
+	c.CollectConnectInfo(&wg, session, ch)
+	c.CollectDonwstreamInfo(&wg, session, ch)
+	c.CollectUpstreamInfo(&wg, session, ch)
 
 	wg.Wait()
 	log.Debug("Collect() done.")
