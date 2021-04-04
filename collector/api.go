@@ -97,10 +97,10 @@ func (r *HitronRouter) Login() error {
 	//}
 
 	form := url.Values{
-		"usr":         {r.Username},
-		"pwd":         {r.Password},
-		"forcelogoff": {"1"},
-		"preSession":  {r.getCookie("preSession")},
+		"usr": {r.Username},
+		"pwd": {r.Password},
+		//"forcelogoff": {"1"},
+		"preSession": {r.getCookie("preSession")},
 	}
 	resp, err = r.client.Post(r.URL+"/goform/login",
 		"application/x-www-form-urlencoded",
