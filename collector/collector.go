@@ -50,6 +50,12 @@ var (
 		prefix+"cm_bpi_status", "DOCSIS Provisioning BPI Status", []string{"auth", "tek"}, nil)
 	cmNetworkAccessDesc = prom.NewDesc(
 		prefix+"cm_network_access_status", "DOCSIS Network Access Permission", nil, nil)
+
+	// CMDocsisWAN
+	cmDocsisAddressDesc = prom.NewDesc(
+		prefix+"cm_docsis_addr", "DOCSIS IP Addresses", []string{"ip", "netmask", "gateway"}, nil)
+	cmIpLeaseDurationDesc = prom.NewDesc(
+		prefix+"cm_dhcp_lease_duration", "DOCSIS DHCP Lease duration", nil, nil)
 )
 
 func (c *Collector) Describe(ch chan<- *prom.Desc) {
@@ -64,6 +70,18 @@ func (c *Collector) Describe(ch chan<- *prom.Desc) {
 
 	// CMInit
 	ch <- cmHwInitDesc
+	ch <- cmFindDownstreamDesc
+	ch <- cmRangingDesc
+	ch <- cmDhcpDesc
+	ch <- cmDownloadConfigDesc
+	ch <- cmRegistrationDesc
+	ch <- cmBPIDesc
+	ch <- cmNetworkAccessDesc
+
+	// CMDocsisWAN
+	ch <- cmDocsisAddressDesc
+	ch <- cmIpLeaseDurationDesc
+
 }
 func (c *Collector) Collect(ch chan<- prom.Metric) {
 	defer func() func() {
@@ -105,7 +123,7 @@ func (c *Collector) CollectInfo(wg *sync.WaitGroup, session *Session, ch chan<- 
 		log.Info("Info: ", err)
 		return
 	}
-	ch <- prom.MustNewConstMetric(systemUptimeDesc, prom.CounterValue, parseUptime(info.SystemUptime))
+	ch <- prom.MustNewConstMetric(systemUptimeDesc, prom.CounterValue, parseDuration(info.SystemUptime))
 	ch <- prom.MustNewConstMetric(versionDesc, prom.GaugeValue, 1, info.HwVersion, info.SwVersion, info.SerialNumber)
 	ch <- prom.MustNewConstMetric(addressDesc, prom.GaugeValue, 1, info.WanIp, info.LanIp, info.RfMac)
 	ch <- prom.MustNewConstMetric(trafficDesc, prom.CounterValue, parsePkt(info.LRecPkt), "lan", "recv")
@@ -151,11 +169,16 @@ func (c *Collector) CollectCMInit(wg *sync.WaitGroup, session *Session, ch chan<
 
 func (c *Collector) CollectCMDocisWAN(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
 	defer wg.Done()
-	_, err := session.CMDocsisWAN()
+	wan, err := session.CMDocsisWAN()
 	if err != nil {
 		log.Info("CMDocsisWAN: ", err)
 		return
 	}
+	ch <- prom.MustNewConstMetric(cmDocsisAddressDesc, prom.GaugeValue,
+		is(NetworkAccessPermitted, wan.NetworkAccess),
+		wan.CmIpAddress, wan.CmNetMask, wan.CmGateway)
+	ch <- prom.MustNewConstMetric(cmIpLeaseDurationDesc, prom.CounterValue,
+		parseDuration(wan.CmIpLeaseDuration))
 }
 
 func (c *Collector) CollectConnectInfo(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
@@ -192,9 +215,9 @@ func is(expected, actual string) float64 {
 	return 0
 }
 
-// parseUptime parses a duration in the format of "05 Days,21 Hours,33 Minutes,44 Seconds"
+// parseDuration parses a duration in the format of "05 Days,21 Hours,33 Minutes,44 Seconds"
 // Example
-func parseUptime(raw string) float64 {
+func parseDuration(raw string) float64 {
 	var days, hours, minutes, seconds time.Duration
 	_, err := fmt.Sscanf(raw, "%2d Days,%2d Hours,%2d Minutes,%2d Seconds", &days, &hours, &minutes, &seconds)
 	if err != nil {

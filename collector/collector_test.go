@@ -3,7 +3,7 @@ package collector
 import "fmt"
 
 func Example_parseUptime() {
-	fmt.Println(parseUptime("05 Days,21 Hours,33 Minutes,44 Seconds"))
+	fmt.Println(parseDuration("05 Days,21 Hours,33 Minutes,44 Seconds"))
 	// Output: 509624
 }
 
