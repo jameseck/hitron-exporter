@@ -58,7 +58,7 @@ type CMInit struct {
 	EaeStatus      string `json:"eaeStatus"`      // Secret
 	BpiStatus      string `json:"bpiStatus"`      // AUTH:authorized, TEK:operational
 	NetworkAccess  string `json:"networkAccess"`  // Permitted
-	TrafficStatus  string `json:"trafficStatus"`  // Enabl
+	TrafficStatus  string `json:"trafficStatus"`  // Enable
 }
 
 type CMDocsisWAN struct {

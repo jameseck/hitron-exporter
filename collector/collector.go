@@ -3,6 +3,7 @@ package collector
 import (
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +36,20 @@ var (
 	// CMInit
 	cmHwInitDesc = prom.NewDesc(
 		prefix+"cm_hwinit_success", "DOCSIS Provisioning HWInit Status", nil, nil)
+	cmFindDownstreamDesc = prom.NewDesc(
+		prefix+"cm_find_downstream_success", "DOCSIS Provisioning Lock Downstream Status", nil, nil)
+	cmRangingDesc = prom.NewDesc(
+		prefix+"cm_ranging_success", "DOCSIS Provisioning Ranging Status", nil, nil)
+	cmDhcpDesc = prom.NewDesc(
+		prefix+"cm_dhcp_success", "DOCSIS Provisioning DHCP Status", nil, nil)
+	cmDownloadConfigDesc = prom.NewDesc(
+		prefix+"cm_download_config_success", "DOCSIS Provisioning Download CM Config File Status", nil, nil)
+	cmRegistrationDesc = prom.NewDesc(
+		prefix+"cm_registration_success", "DOCSIS Provisioning Registration Status", nil, nil)
+	cmBPIDesc = prom.NewDesc(
+		prefix+"cm_bpi_status", "DOCSIS Provisioning BPI Status", []string{"auth", "tek"}, nil)
+	cmNetworkAccessDesc = prom.NewDesc(
+		prefix+"cm_network_access_status", "DOCSIS Network Access Permission", nil, nil)
 )
 
 func (c *Collector) Describe(ch chan<- *prom.Desc) {
@@ -108,6 +123,30 @@ func (c *Collector) CollectCMInit(wg *sync.WaitGroup, session *Session, ch chan<
 	}
 	ch <- prom.MustNewConstMetric(cmHwInitDesc, prom.GaugeValue,
 		is(StatusSuccess, cmInit.HwInit))
+	ch <- prom.MustNewConstMetric(cmFindDownstreamDesc, prom.GaugeValue,
+		is(StatusSuccess, cmInit.FindDownstream))
+	ch <- prom.MustNewConstMetric(cmRangingDesc, prom.GaugeValue,
+		is(StatusSuccess, cmInit.Ranging))
+	ch <- prom.MustNewConstMetric(cmDhcpDesc, prom.GaugeValue,
+		is(StatusSuccess, cmInit.Dhcp))
+	ch <- prom.MustNewConstMetric(cmDownloadConfigDesc, prom.GaugeValue,
+		is(StatusSuccess, cmInit.DownloadCfg))
+	ch <- prom.MustNewConstMetric(cmRegistrationDesc, prom.GaugeValue,
+		is(StatusSuccess, cmInit.Registration))
+	ch <- prom.MustNewConstMetric(cmNetworkAccessDesc, prom.GaugeValue,
+		is(NetworkAccessPermitted, cmInit.NetworkAccess))
+
+	bpiDesc := map[string]string{}
+	kvs := strings.Split(cmInit.BpiStatus, ", ")
+	for _, kv := range kvs {
+		split := strings.SplitN(kv, ":", 2)
+		if len(split) == 2 {
+			bpiDesc[split[0]] = split[1]
+		}
+	}
+	ch <- prom.MustNewConstMetric(cmBPIDesc, prom.GaugeValue,
+		1, bpiDesc["AUTH"], bpiDesc["TEK"])
+
 }
 
 func (c *Collector) CollectCMDocisWAN(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
