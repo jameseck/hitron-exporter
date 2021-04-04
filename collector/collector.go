@@ -3,6 +3,7 @@ package collector
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	prom "github.com/prometheus/client_golang/prometheus"
@@ -52,6 +53,7 @@ func (c *Collector) Describe(ch chan<- *prom.Desc) {
 func (c *Collector) Collect(ch chan<- prom.Metric) {
 	defer func() func() {
 		startTime := time.Now()
+
 		return func() {
 			duration := time.Since(startTime).Seconds()
 			ch <- prom.MustNewConstMetric(scrapeTimeDesc, prom.GaugeValue, duration)
@@ -66,6 +68,22 @@ func (c *Collector) Collect(ch chan<- prom.Metric) {
 	defer session.Logout()
 	ch <- prom.MustNewConstMetric(loginSuccessDesc, prom.GaugeValue, 1)
 
+	var wg sync.WaitGroup
+	wg.Add(6)
+
+	go c.CollectInfo(&wg, session, ch)
+	go c.CollectCMInit(&wg, session, ch)
+	go c.CollectCMDocisWAN(&wg, session, ch)
+	go c.CollectConnectInfo(&wg, session, ch)
+	go c.CollectDonwstreamInfo(&wg, session, ch)
+	go c.CollectUpstreamInfo(&wg, session, ch)
+
+	wg.Wait()
+	log.Debug("Collect() done.")
+}
+
+func (c *Collector) CollectInfo(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
+	defer wg.Done()
 	info, err := session.Info()
 	if err != nil {
 		// todo count errors
@@ -79,7 +97,10 @@ func (c *Collector) Collect(ch chan<- prom.Metric) {
 	ch <- prom.MustNewConstMetric(trafficDesc, prom.CounterValue, parsePkt(info.LSendPkt), "lan", "send")
 	ch <- prom.MustNewConstMetric(trafficDesc, prom.CounterValue, parsePkt(info.WRecPkt), "wan", "recv")
 	ch <- prom.MustNewConstMetric(trafficDesc, prom.CounterValue, parsePkt(info.WSendPkt), "wan", "send")
+}
 
+func (c *Collector) CollectCMInit(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
+	defer wg.Done()
 	cmInit, err := session.CMInit()
 	if err != nil {
 		log.Info("CMInit: ", err)
@@ -87,28 +108,40 @@ func (c *Collector) Collect(ch chan<- prom.Metric) {
 	}
 	ch <- prom.MustNewConstMetric(cmHwInitDesc, prom.GaugeValue,
 		is(StatusSuccess, cmInit.HwInit))
+}
 
-	_, err = session.CMDocsisWAN()
+func (c *Collector) CollectCMDocisWAN(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
+	defer wg.Done()
+	_, err := session.CMDocsisWAN()
 	if err != nil {
-		log.Info("CMInit: ", err)
+		log.Info("CMDocsisWAN: ", err)
 		return
 	}
+}
 
-	_, err = session.ConnectInfo()
+func (c *Collector) CollectConnectInfo(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
+	defer wg.Done()
+	_, err := session.ConnectInfo()
 	if err != nil {
-		log.Info("CMInit: ", err)
+		log.Info("ConnectInfo: ", err)
 		return
 	}
+}
 
-	_, err = session.UpstreamInfo()
+func (c *Collector) CollectUpstreamInfo(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
+	defer wg.Done()
+	_, err := session.UpstreamInfo()
 	if err != nil {
-		log.Info("CMInit: ", err)
+		log.Info("UpstreamInfo: ", err)
 		return
 	}
+}
 
-	_, err = session.DownstreamInfo()
+func (c *Collector) CollectDonwstreamInfo(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
+	defer wg.Done()
+	_, err := session.DownstreamInfo()
 	if err != nil {
-		log.Info("CMInit: ", err)
+		log.Info("DownstreamInfo: ", err)
 		return
 	}
 }
