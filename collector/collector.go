@@ -18,6 +18,8 @@ const prefix = "hitron_"
 var (
 	loginSuccessDesc *prom.Desc = prom.NewDesc(
 		prefix+"login_success_bool", "1 if the login was successful", nil, nil)
+	scrapeTimeDesc *prom.Desc = prom.NewDesc(
+		prefix+"scrape_time", "Time the scrape run took", nil, nil)
 
 	// SysInfo
 	systemUptimeDesc = prom.NewDesc(
@@ -36,6 +38,7 @@ var (
 
 func (c *Collector) Describe(ch chan<- *prom.Desc) {
 	ch <- loginSuccessDesc
+	ch <- scrapeTimeDesc
 
 	// SysInfo
 	ch <- systemUptimeDesc
@@ -47,6 +50,14 @@ func (c *Collector) Describe(ch chan<- *prom.Desc) {
 	ch <- cmHwInitDesc
 }
 func (c *Collector) Collect(ch chan<- prom.Metric) {
+	defer func() func() {
+		startTime := time.Now()
+		return func() {
+			duration := time.Since(startTime).Seconds()
+			ch <- prom.MustNewConstMetric(scrapeTimeDesc, prom.GaugeValue, duration)
+		}
+	}()()
+
 	session, err := c.Router.Login()
 	if err != nil {
 		ch <- prom.MustNewConstMetric(loginSuccessDesc, prom.GaugeValue, 0)
@@ -76,6 +87,30 @@ func (c *Collector) Collect(ch chan<- prom.Metric) {
 	}
 	ch <- prom.MustNewConstMetric(cmHwInitDesc, prom.GaugeValue,
 		is(StatusSuccess, cmInit.HwInit))
+
+	_, err = session.CMDocsisWAN()
+	if err != nil {
+		log.Info("CMInit: ", err)
+		return
+	}
+
+	_, err = session.ConnectInfo()
+	if err != nil {
+		log.Info("CMInit: ", err)
+		return
+	}
+
+	_, err = session.UpstreamInfo()
+	if err != nil {
+		log.Info("CMInit: ", err)
+		return
+	}
+
+	_, err = session.DownstreamInfo()
+	if err != nil {
+		log.Info("CMInit: ", err)
+		return
+	}
 }
 
 func is(expected, actual string) float64 {
@@ -109,7 +144,6 @@ var scaleMap = map[string]float64{
 	"E": math.Pow(1024, 5),
 }
 
-//
 func parsePkt(raw string) float64 {
 	var out float64
 	var scale string

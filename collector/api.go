@@ -61,6 +61,64 @@ type CMInit struct {
 	TrafficStatus  string `json:"trafficStatus"`  // Enabl
 }
 
+type CMDocsisWAN struct {
+	Configname        string `json:"Configname"`        // Secret
+	NetworkAccess     string `json:"NetworkAccess"`     // Permitted
+	CmIpAddress       string `json:"CmIpAddress"`       // 10.40.123.123
+	CmNetMask         string `json:"CmNetMask"`         // 255.255.240.0
+	CmGateway         string `json:"CmGateway"`         // 10.40.123.1
+	CmIpLeaseDuration string `json:"CmIpLeaseDuration"` // 03 Days,00 Hours,00 Minutes,00 Seconds"
+}
+
+type UpstreamInfo struct {
+	PortId         int     `json:"portId,string"`         // 1
+	Frequency      int     `json:"frequency,string"`      // 51000199
+	Bandwidth      int     `json:"bandwidth,string"`      // 6400000
+	ScdmaMode      string  `json:"scdmaMode"`             // ATDMA
+	SignalStrength float64 `json:"signalStrength,string"` // 47.500
+	ChannelId      int     `json:"channelId,string"`      // 4
+}
+
+type Modulation int
+
+var (
+	Modulation_16QAM   Modulation = 0
+	Modulation_64QAM              = 1
+	Modulation_256QAM             = 2
+	Modulation_1024QAM            = 3
+	Modulation_32QAM              = 4
+	Modulation_128QAM             = 5
+	Modulation_QPSK               = 6
+)
+
+type DownstreamInfo struct {
+	PortId         int        `json:"portId,string"`         // 1
+	Frequency      int64      `json:"frequency,string"`      // 474000000
+	Modulation     Modulation `json:"modulation,string"`     // 2
+	SignalStrength float64    `json:"signalStrength,string"` // 3.500
+	Snr            float64    `json:"snr,string"`            // 36.387
+	ChannelId      int        `json:"channelId,string"`      // 1
+}
+
+type ConnectType string
+
+var (
+	DHCP   ConnectType = "DHCP-IP"
+	Static             = "Self-assigned"
+)
+
+type ConnectInfo struct {
+	Id          int         `json:"id"`          // 4
+	HostName    string      `json:"hostName"`    // unknown
+	IpAddr      string      `json:"ipAddr"`      // 192.168.0.21
+	IpType      string      `json:"ipType"`      // IPv4
+	MacAddr     string      `json:"macAddr"`     // 68:DB:F5:F4:40:59
+	ConnectType ConnectType `json:"connectType"` // DHCP-IP / Self-assigned
+	Interface   string      `json:"interface"`   // Ethernet
+	Online      string      `json:"online"`      // active
+	Comnum      int         `json:"comnum"`      // 1
+}
+
 var (
 	StatusSuccess          = "Success"
 	NetworkAccessPermitted = "Permitted"
@@ -210,7 +268,7 @@ func (r *HitronRouter) getCookie(name string) string {
 }
 
 func (r *HitronRouter) fetch(name string, output interface{}) error {
-	resp, err := r.client.Get(r.URL + "/data/get" + name + ".asp")
+	resp, err := r.client.Get(r.URL + "/data/" + name + ".asp")
 	if err != nil {
 		return errors.Wrap(err, "getting "+name)
 	}
@@ -233,7 +291,7 @@ func (r *HitronRouter) fetch(name string, output interface{}) error {
 
 func (r *HitronRouter) Info() (*SysInfo, error) {
 	var data []SysInfo
-	err := r.fetch("SysInfo", &data)
+	err := r.fetch("getSysInfo", &data)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +303,7 @@ func (r *HitronRouter) Info() (*SysInfo, error) {
 
 func (r *HitronRouter) CMInit() (*CMInit, error) {
 	var data []CMInit
-	err := r.fetch("CMInit", &data)
+	err := r.fetch("getCMInit", &data)
 	if err != nil {
 		return nil, err
 	}
@@ -253,4 +311,33 @@ func (r *HitronRouter) CMInit() (*CMInit, error) {
 		return nil, errors.New(fmt.Sprintf("CMInit gave wrong length: %d", len(data)))
 	}
 	return &data[0], err
+}
+func (r *HitronRouter) CMDocsisWAN() (*CMDocsisWAN, error) {
+	var data []CMDocsisWAN
+	err := r.fetch("getCmDocsisWan", &data)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) != 1 {
+		return nil, errors.New(fmt.Sprintf("CMInit gave wrong length: %d", len(data)))
+	}
+	return &data[0], err
+}
+
+func (r *HitronRouter) ConnectInfo() ([]ConnectInfo, error) {
+	var data []ConnectInfo
+	err := r.fetch("getConnectInfo", &data)
+	return data, err
+}
+
+func (r *HitronRouter) UpstreamInfo() ([]UpstreamInfo, error) {
+	var data []UpstreamInfo
+	err := r.fetch("usinfo", &data)
+	return data, err
+}
+
+func (r *HitronRouter) DownstreamInfo() ([]DownstreamInfo, error) {
+	var data []DownstreamInfo
+	err := r.fetch("dsinfo", &data)
+	return data, err
 }
