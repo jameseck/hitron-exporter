@@ -65,7 +65,7 @@ var (
 	// ConnectInfo
 	lanDeviceDesc = prom.NewDesc(
 		prefix+"lan_device", "LAN Device table",
-		[]string{"id", "ip", "ip_version", "mac", "ip_type", "interface", "comnum"}, nil)
+		[]string{"ip", "ip_version", "mac", "ip_type", "interface", "comnum"}, nil)
 )
 
 func (c *Collector) Describe(ch chan<- *prom.Desc) {
@@ -213,7 +213,7 @@ func (c *Collector) CollectConnectInfo(wg *sync.WaitGroup, session *Session, ch 
 			connectType = "static"
 		}
 		ch <- prom.MustNewConstMetric(lanDeviceDesc, prom.GaugeValue, is("active", device.Online),
-			fmt.Sprint(device.Id), device.IpAddr, device.IpType, device.MacAddr, connectType, device.Interface, fmt.Sprint(device.Comnum))
+			device.IpAddr, device.IpType, device.MacAddr, connectType, device.Interface, fmt.Sprint(device.Comnum))
 	}
 }
 
