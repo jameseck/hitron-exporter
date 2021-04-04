@@ -27,11 +27,14 @@ var (
 	systemUptimeDesc = prom.NewDesc(
 		prefix+"info_uptime", "System uptime", nil, nil)
 	versionDesc = prom.NewDesc(
-		prefix+"version", "Versions in labels", []string{"hw_version", "sw_version", "serial"}, nil)
+		prefix+"version", "Versions in labels",
+		[]string{"hw_version", "sw_version", "serial"}, nil)
 	addressDesc = prom.NewDesc(
-		prefix+"address", "Hardware and IP Addresses in labels", []string{"wan_ip", "lan_ip", "rf_mac"}, nil)
+		prefix+"address", "Hardware and IP Addresses in labels",
+		[]string{"wan_ip", "lan_ip", "rf_mac"}, nil)
 	trafficDesc = prom.NewDesc(
-		prefix+"traffic", "Basic traffic counters. if=wan/lan, dir=send/recv.", []string{"if", "dir"}, nil)
+		prefix+"traffic", "Basic traffic counters. if=wan/lan, dir=send/recv.",
+		[]string{"if", "dir"}, nil)
 
 	// CMInit
 	cmHwInitDesc = prom.NewDesc(
@@ -47,15 +50,22 @@ var (
 	cmRegistrationDesc = prom.NewDesc(
 		prefix+"cm_registration_success", "DOCSIS Provisioning Registration Status", nil, nil)
 	cmBPIDesc = prom.NewDesc(
-		prefix+"cm_bpi_status", "DOCSIS Provisioning BPI Status", []string{"auth", "tek"}, nil)
+		prefix+"cm_bpi_status", "DOCSIS Provisioning BPI Status",
+		[]string{"auth", "tek"}, nil)
 	cmNetworkAccessDesc = prom.NewDesc(
 		prefix+"cm_network_access_status", "DOCSIS Network Access Permission", nil, nil)
 
 	// CMDocsisWAN
 	cmDocsisAddressDesc = prom.NewDesc(
-		prefix+"cm_docsis_addr", "DOCSIS IP Addresses", []string{"ip", "netmask", "gateway"}, nil)
+		prefix+"cm_docsis_addr", "DOCSIS IP Addresses",
+		[]string{"ip", "netmask", "gateway"}, nil)
 	cmIpLeaseDurationDesc = prom.NewDesc(
 		prefix+"cm_dhcp_lease_duration", "DOCSIS DHCP Lease duration", nil, nil)
+
+	// ConnectInfo
+	lanDeviceDesc = prom.NewDesc(
+		prefix+"lan_device", "LAN Device table",
+		[]string{"id", "ip", "ip_version", "mac", "ip_type", "interface", "comnum"}, nil)
 )
 
 func (c *Collector) Describe(ch chan<- *prom.Desc) {
@@ -81,6 +91,9 @@ func (c *Collector) Describe(ch chan<- *prom.Desc) {
 	// CMDocsisWAN
 	ch <- cmDocsisAddressDesc
 	ch <- cmIpLeaseDurationDesc
+
+	// ConnectInfo
+	ch <- lanDeviceDesc
 
 }
 func (c *Collector) Collect(ch chan<- prom.Metric) {
@@ -183,10 +196,20 @@ func (c *Collector) CollectCMDocisWAN(wg *sync.WaitGroup, session *Session, ch c
 
 func (c *Collector) CollectConnectInfo(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
 	defer wg.Done()
-	_, err := session.ConnectInfo()
+	info, err := session.ConnectInfo()
 	if err != nil {
 		log.Info("ConnectInfo: ", err)
 		return
+	}
+	for _, device := range info {
+		connectType := string(device.ConnectType)
+		if device.ConnectType == DHCP {
+			connectType = "dhcp"
+		} else if device.ConnectType == Static {
+			connectType = "static"
+		}
+		ch <- prom.MustNewConstMetric(lanDeviceDesc, prom.GaugeValue, is("active", device.Online),
+			fmt.Sprint(device.Id), device.IpAddr, device.IpType, device.MacAddr, connectType, device.Interface, fmt.Sprint(device.Comnum))
 	}
 }
 

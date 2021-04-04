@@ -104,7 +104,7 @@ type ConnectType string
 
 var (
 	DHCP   ConnectType = "DHCP-IP"
-	Static             = "Self-assigned"
+	Static ConnectType = "Self-assigned"
 )
 
 type ConnectInfo struct {
