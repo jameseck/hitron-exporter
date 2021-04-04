@@ -23,6 +23,10 @@ type HitronRouter struct {
 	parsedUrl *url.URL
 }
 
+type Session struct {
+	*HitronRouter
+}
+
 type SysInfo struct {
 	HwVersion       string `json:"hwVersion"`       // 1A
 	SwVersion       string `json:"swVersion"`       // 4.12.34.567-XX-YYY
@@ -58,9 +62,26 @@ type CMInit struct {
 }
 
 var (
-	StatusSuccess          string = "Success"
-	NetworkAccessPermitted        = "Permitted"
+	StatusSuccess          = "Success"
+	NetworkAccessPermitted = "Permitted"
+
+	contentType = "application/x-www-form-urlencoded"
+
+	ErrorBackingOff  = errors.New("Backing off, because the router told us to do so")
+	ErrorLoginAnswer = errors.New("Login response unknown")
+
+	// Time to wait for a previous session to end before failing a scrape.
+	WaitTimeout = time.Second * 3
+	// Timeout for individual requests.
+	RequestTimeout = time.Second * 30
+
+	accessToken chan bool
 )
+
+func init() {
+	accessToken = make(chan bool, 1)
+	accessToken <- true
+}
 
 func NewHitronRouter(rawUrl, username, password string) *HitronRouter {
 	cookieJar, err := cookiejar.New(nil)
@@ -78,18 +99,26 @@ func NewHitronRouter(rawUrl, username, password string) *HitronRouter {
 		Password:  password,
 		client: &http.Client{
 			Jar:     cookieJar,
-			Timeout: time.Second * 30,
+			Timeout: RequestTimeout,
 		},
 	}
 }
 
-func (r *HitronRouter) Login() error {
+func (r *HitronRouter) Login() (*Session, error) {
+	// get a backoff token
+	session := &Session{r}
+	if t := session.getToken(); !t {
+		return nil, ErrorBackingOff
+	}
+
 	// login check to get preSession cookie
 	resp, err := r.client.Get(r.URL + "/index.html")
 	if err != nil {
 		log.Infof("login: %+v err: %+v", resp, err)
-		return err
+		session.abort()
+		return nil, err
 	}
+	defer resp.Body.Close()
 	log.Debug("Login Check:", resp)
 	//if resp.StatusCode != 302 {
 	// no need to login
@@ -103,15 +132,70 @@ func (r *HitronRouter) Login() error {
 		"preSession": {r.getCookie("preSession")},
 	}
 	resp, err = r.client.Post(r.URL+"/goform/login",
-		"application/x-www-form-urlencoded",
+		contentType,
 		strings.NewReader(form.Encode()))
-
 	if err != nil {
 		log.Warnf("Login error: %+v / %+v", err, resp)
-		return err
+		return nil, err
 	}
-	r.getCookie("sessionindex") // for debug
-	return nil
+	defer resp.Body.Close()
+	data, err := ioutil.ReadAll(resp.Body)
+	response := string(data)
+	log.Debugf("Login response: %+v %+v Body: %s", err, resp, response)
+	log.Debug("cookies: ", r.client.Jar.Cookies(r.parsedUrl))
+	if response != "success" {
+		return nil, r.handleLoginError(session, response)
+	}
+
+	return session, nil
+}
+
+func (r *HitronRouter) handleLoginError(session *Session, response string) error {
+	if strings.Contains(response, "LoginProtect=") {
+		//TODO backoff login!!
+		// LoginProtect=9|58|21
+		// --> 9 failed attempts, wait 58min21s
+		var failedAttempts, minutes, seconds time.Duration
+		if _, err := fmt.Sscanf(response, "LoginProtect=%d|%d|%d", &failedAttempts, &minutes, &seconds); err != nil {
+			session.abort()
+			return errors.New("parsing backoff '" + response + "': " + err.Error())
+		}
+		go func() {
+			wait := time.After(time.Minute*minutes + time.Second*seconds)
+			<-wait
+			session.abort()
+		}()
+		return ErrorBackingOff
+	}
+
+	return errors.Wrap(ErrorLoginAnswer, response)
+}
+
+func (r *Session) getToken() bool {
+	timeout := time.After(WaitTimeout)
+	select {
+	case <-accessToken:
+		return true
+	case <-timeout:
+		return false
+	}
+}
+
+func (r *Session) abort() {
+	accessToken <- true
+}
+
+func (r *Session) Logout() {
+	defer r.abort()
+	form := url.Values{
+		"data": {"byebye"},
+	}
+	resp, err := r.client.Post(r.URL+"/goform/logout", contentType, strings.NewReader(form.Encode()))
+	if err != nil {
+		log.Warnf("Logout error: %+v: %+v", err, resp)
+		return
+	}
+	// body should be empty
 }
 
 func (r *HitronRouter) getCookie(name string) string {
@@ -130,11 +214,15 @@ func (r *HitronRouter) fetch(name string, output interface{}) error {
 	if err != nil {
 		return errors.Wrap(err, "getting "+name)
 	}
+	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
 	log.Debugf("%s raw: %+v : %v", name, resp, string(data))
+	if strings.Contains(string(data), "Unknown error.") {
+		//TODO
+	}
 	err = json.Unmarshal(data, output)
 	if err != nil {
 		return errors.Wrap(err, "parsing "+name)
