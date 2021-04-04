@@ -21,7 +21,7 @@ var (
 	loginSuccessDesc *prom.Desc = prom.NewDesc(
 		prefix+"login_success_bool", "1 if the login was successful", nil, nil)
 	scrapeTimeDesc *prom.Desc = prom.NewDesc(
-		prefix+"scrape_time", "Time the scrape run took", nil, nil)
+		prefix+"scrape_time", "Time the scrape run took", []string{"component"}, nil)
 
 	// SysInfo
 	systemUptimeDesc = prom.NewDesc(
@@ -97,15 +97,9 @@ func (c *Collector) Describe(ch chan<- *prom.Desc) {
 
 }
 func (c *Collector) Collect(ch chan<- prom.Metric) {
-	defer func() func() {
-		startTime := time.Now()
+	defer measureTime(ch, "all")()
 
-		return func() {
-			duration := time.Since(startTime).Seconds()
-			ch <- prom.MustNewConstMetric(scrapeTimeDesc, prom.GaugeValue, duration)
-		}
-	}()()
-
+	loginFinished := measureTime(ch, "login")
 	session, err := c.Router.Login()
 	if err != nil {
 		ch <- prom.MustNewConstMetric(loginSuccessDesc, prom.GaugeValue, 0)
@@ -113,6 +107,7 @@ func (c *Collector) Collect(ch chan<- prom.Metric) {
 	}
 	defer session.Logout()
 	ch <- prom.MustNewConstMetric(loginSuccessDesc, prom.GaugeValue, 1)
+	loginFinished()
 
 	var wg sync.WaitGroup
 	wg.Add(6)
@@ -129,7 +124,9 @@ func (c *Collector) Collect(ch chan<- prom.Metric) {
 }
 
 func (c *Collector) CollectInfo(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
+	defer measureTime(ch, "Info")()
 	defer wg.Done()
+
 	info, err := session.Info()
 	if err != nil {
 		// todo count errors
@@ -146,7 +143,9 @@ func (c *Collector) CollectInfo(wg *sync.WaitGroup, session *Session, ch chan<- 
 }
 
 func (c *Collector) CollectCMInit(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
+	defer measureTime(ch, "CMInit")()
 	defer wg.Done()
+
 	cmInit, err := session.CMInit()
 	if err != nil {
 		log.Info("CMInit: ", err)
@@ -177,11 +176,12 @@ func (c *Collector) CollectCMInit(wg *sync.WaitGroup, session *Session, ch chan<
 	}
 	ch <- prom.MustNewConstMetric(cmBPIDesc, prom.GaugeValue,
 		1, bpiDesc["AUTH"], bpiDesc["TEK"])
-
 }
 
 func (c *Collector) CollectCMDocisWAN(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
+	defer measureTime(ch, "CMDocsisWAN")()
 	defer wg.Done()
+
 	wan, err := session.CMDocsisWAN()
 	if err != nil {
 		log.Info("CMDocsisWAN: ", err)
@@ -195,7 +195,9 @@ func (c *Collector) CollectCMDocisWAN(wg *sync.WaitGroup, session *Session, ch c
 }
 
 func (c *Collector) CollectConnectInfo(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
+	defer measureTime(ch, "ConnectInfo")()
 	defer wg.Done()
+
 	info, err := session.ConnectInfo()
 	if err != nil {
 		log.Info("ConnectInfo: ", err)
@@ -214,7 +216,9 @@ func (c *Collector) CollectConnectInfo(wg *sync.WaitGroup, session *Session, ch 
 }
 
 func (c *Collector) CollectUpstreamInfo(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
+	defer measureTime(ch, "UpstreamInfo")()
 	defer wg.Done()
+
 	_, err := session.UpstreamInfo()
 	if err != nil {
 		log.Info("UpstreamInfo: ", err)
@@ -223,7 +227,9 @@ func (c *Collector) CollectUpstreamInfo(wg *sync.WaitGroup, session *Session, ch
 }
 
 func (c *Collector) CollectDonwstreamInfo(wg *sync.WaitGroup, session *Session, ch chan<- prom.Metric) {
+	defer measureTime(ch, "DownstreamInfo")()
 	defer wg.Done()
+
 	_, err := session.DownstreamInfo()
 	if err != nil {
 		log.Info("DownstreamInfo: ", err)
@@ -275,4 +281,13 @@ func parsePkt(raw string) float64 {
 		return -1
 	}
 	return out * factor
+}
+
+func measureTime(ch chan<- prom.Metric, label string) func() {
+	startTime := time.Now()
+
+	return func() {
+		duration := time.Since(startTime).Seconds()
+		ch <- prom.MustNewConstMetric(scrapeTimeDesc, prom.GaugeValue, duration, label)
+	}
 }
