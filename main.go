@@ -26,6 +26,9 @@ func main() {
 	os.Args = os.Args[0:1] // clear arguments for coredns
 	viper.BindPFlags(flags)
 
+	viper.SetEnvPrefix("HIT") // will be uppercased automatically
+	viper.AutomaticEnv()
+
 	if viper.GetBool("debug") {
 		log.SetLevel(log.DebugLevel)
 	}

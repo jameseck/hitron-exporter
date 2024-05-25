@@ -9,6 +9,8 @@ Metrics exporter for Hitron CGNV4-FX2 routers, which are (used to be?) distribut
 docker run -it --rm -p 9101:80 ghcr.io/cfstras/hitron-exporter:latest --host --pass XYZ
 ```
 
+The args can also be passed as ENV variables prefixed with HIT_, for example HIT_USER, HIT_HOST, HIT_PASS
+
 ### docker-compose
 
 ```yaml
