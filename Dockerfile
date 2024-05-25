@@ -1,4 +1,4 @@
-FROM golang:1.16 as build
+FROM docker.io/library/golang:1.16 as build
 
 ENV CGO_ENABLED=0
 WORKDIR /src
